@@ -506,6 +506,7 @@ __int64 FhGAACEncoder::beginEncode(_TCHAR *outFile, encodingParameters *params)
 #endif
 	if(!encoder) {
 		fprintf(stderr,"error: createAudio3 failure (input PCM format is unsupported or invalid encoding parameters)\n");
+		DeleteFile(tempFile);
 		goto last;
 	}
 
@@ -516,6 +517,7 @@ __int64 FhGAACEncoder::beginEncode(_TCHAR *outFile, encodingParameters *params)
 	}
 	else if(_tfopen_s(&fpw, outFile,_T("wb"))) {
 		if(fpw) fclose(fpw);
+		DeleteFile(tempFile);
 		fprintf(stderr,"error: cannot create output file\n");
 		goto last;
 	}
