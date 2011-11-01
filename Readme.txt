@@ -27,7 +27,7 @@ fhgaacenc.exe [options] infile [outfile]
     lc   : force use LC-AAC profile
     he   : force use HE-AAC (AAC+SBR) profile
     hev2 : force use HE-AAC v2 (AAC+SBR+PS) profile
-  --adts : use ADTS container instead of MPEG-4 (CBR only)
+  --adts : use ADTS container instead of MPEG-4
   --ignorelength : ignore the size of data chunk when encoding from pipe
   --quiet        : don't print the progress
 

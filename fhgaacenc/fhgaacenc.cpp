@@ -30,7 +30,8 @@ static void printUsage(void)
 {
 	fprintf(stderr,"fhgaacenc version %d by tmkk\n",VERSION);
 	fprintf(stderr,"Usage: fhgaacenc.exe [options] infile [outfile]\n");
-	fprintf(stderr,"  Note: pass - as infile to encode from stdin.\n\n");
+	fprintf(stderr,"  Note: pass - as infile to encode from stdin.\n");
+	fprintf(stderr,"        pass - as outfile to encode to stdout (ADTS only).\n\n");
 	fprintf(stderr,"  General encoding options\n");
 	fprintf(stderr,"\t--cbr <bitrate> : encode in CBR mode, bitrate=8..576\n");
 	fprintf(stderr,"\t--vbr <preset>  : encode in VBR mode, preset=1..5 [default]\n");
@@ -40,7 +41,7 @@ static void printUsage(void)
 	fprintf(stderr,"\t    lc   : force use LC-AAC profile\n");
 	fprintf(stderr,"\t    he   : force use HE-AAC (AAC+SBR) profile\n");
 	fprintf(stderr,"\t    hev2 : force use HE-AAC v2 (AAC+SBR+PS) profile\n");
-	fprintf(stderr,"\t--adts : use ADTS container instead of MPEG-4 (CBR only)\n");
+	fprintf(stderr,"\t--adts : use ADTS container instead of MPEG-4\n");
 	fprintf(stderr,"  Other options \n");
 	fprintf(stderr,"\t--ignorelength : ignore the size of data chunk when encoding from pipe\n");
 	fprintf(stderr,"\t--quiet        : don't print the progress\n");
@@ -154,10 +155,12 @@ int _tmain(int argc, _TCHAR* argv[])
 		printUsage();
 		return 0;
 	}
+	/*
 	if(params.mode == kModeVBR && params.adtsMode) {
 		fprintf(stderr,"Error: only CBR is supported in ADTS AAC encoder.\n");
 		return 0;
 	}
+	*/
 
 	if(!params.readFromStdin) {
 		replaceSlashWithBackSlash(params.inFile);

@@ -7,7 +7,7 @@
 #include "stdafx.h"
 #include "FhGAACencoder.h"
 
-#define SAMPLES_PER_LOOP 2048
+#define SAMPLES_PER_LOOP 1024
 
 static const unsigned char INTEGER_PCM_GUID[16] = {0x01,0x00,0x00,0x00,0x00,0x00,0x10,0x00,0x80,0x00,0x00,0xaa,0x00,0x38,0x9b,0x71};
 static const unsigned char FLOAT_PCM_GUID[16]   = {0x03,0x00,0x00,0x00,0x00,0x00,0x10,0x00,0x80,0x00,0x00,0xaa,0x00,0x38,0x9b,0x71};
@@ -200,6 +200,116 @@ end:
 	free(tmpbuf2);
 }
 
+static unsigned int getFrequencyAndChannelFromM4a(FILE *fp)
+{
+	char atom[4];
+	int tmp,i;
+	__int64 initPos = ftello(fp);
+	int freq = 0;
+	
+	if(fseeko(fp,0,SEEK_SET) != 0) goto end;
+	
+	while(1) { //skip until moov;
+		if(fread(&tmp,4,1,fp) < 1) goto end;
+		if(fread(atom,1,4,fp) < 4) goto end;
+		tmp = SWAP32(tmp);
+		if(!memcmp(atom,"moov",4)) break;
+		if(fseeko(fp,tmp-8,SEEK_CUR) != 0) goto end;
+	}
+	
+	while(1) { //skip until trak;
+		if(fread(&tmp,4,1,fp) < 1) goto end;
+		if(fread(atom,1,4,fp) < 4) goto end;
+		tmp = SWAP32(tmp);
+		if(!memcmp(atom,"trak",4)) break;
+		if(fseeko(fp,tmp-8,SEEK_CUR) != 0) goto end;
+	}
+	
+	while(1) { //skip until mdia;
+		if(fread(&tmp,4,1,fp) < 1) goto end;
+		if(fread(atom,1,4,fp) < 4) goto end;
+		tmp = SWAP32(tmp);
+		if(!memcmp(atom,"mdia",4)) break;
+		if(fseeko(fp,tmp-8,SEEK_CUR) != 0) goto end;
+	}
+	
+	while(1) { //skip until minf;
+		if(fread(&tmp,4,1,fp) < 1) goto end;
+		if(fread(atom,1,4,fp) < 4) goto end;
+		tmp = SWAP32(tmp);
+		if(!memcmp(atom,"minf",4)) break;
+		if(fseeko(fp,tmp-8,SEEK_CUR) != 0) goto end;
+	}
+	
+	while(1) { //skip until stbl;
+		if(fread(&tmp,4,1,fp) < 1) goto end;
+		if(fread(atom,1,4,fp) < 4) goto end;
+		tmp = SWAP32(tmp);
+		if(!memcmp(atom,"stbl",4)) break;
+		if(fseeko(fp,tmp-8,SEEK_CUR) != 0) goto end;
+	}
+	
+	while(1) { //skip until esds;
+		if(fread(atom,1,4,fp) < 4) goto end;
+		if(!memcmp(atom,"esds",4)) break;
+		if(fseeko(fp,-3,SEEK_CUR) != 0) goto end;
+	}
+	
+	if(fseeko(fp,5,SEEK_CUR) != 0) goto end;
+	for(i=0;i<3;i++) {
+		if(fread(atom,1,1,fp) < 1) goto end;
+		if((unsigned char)atom[0] != 0x80) {
+			if(fseeko(fp,-1,SEEK_CUR) != 0) goto end;
+			break;
+		}
+	}
+	if(fseeko(fp,5,SEEK_CUR) != 0) goto end;
+	for(i=0;i<3;i++) {
+		if(fread(atom,1,1,fp) < 1) goto end;
+		if((unsigned char)atom[0] != 0x80) {
+			if(fseeko(fp,-1,SEEK_CUR) != 0) goto end;
+			break;
+		}
+	}
+	if(fseeko(fp,15,SEEK_CUR) != 0) goto end;
+	for(i=0;i<3;i++) {
+		if(fread(atom,1,1,fp) < 1) goto end;
+		if((unsigned char)atom[0] != 0x80) {
+			if(fseeko(fp,-1,SEEK_CUR) != 0) goto end;
+			break;
+		}
+	}
+	if(fseeko(fp,1,SEEK_CUR) != 0) goto end;
+	if(fread(atom,1,2,fp) < 2) goto end;
+	tmp = (atom[0]<<1)&0xe;
+	tmp |= (atom[1]>>7)&0x1;
+	tmp <<= 4;
+	tmp |= (atom[1]>>3)&0xf;
+	
+end:
+		fseeko(fp,initPos,SEEK_SET);
+	return tmp;
+}
+
+static
+int getSamplingRateIndex(int rate)
+{
+	static const int rtab[] = {
+		96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 
+		16000, 12000, 11025, 8000, 7350, 0
+	};
+	for (const int *p = rtab; *p; ++p)
+		if (*p == rate)
+			return p - rtab;
+	return 0xf;
+}
+
+static
+int getChannelConfig(int nchannels)
+{
+	return nchannels < 7 ? nchannels : 7;
+}
+
 FhGAACEncoder::FhGAACEncoder()
 {
 	encoder = NULL;
@@ -309,7 +419,7 @@ last:
 
 bool FhGAACEncoder::openFile(_TCHAR *inFile)
 {
-	SF_INFO sfinfo;
+	SF_INFO sfinfo = { 0 };
 #ifdef UNICODE
 	sff = sf_wchar_open(inFile, SFM_READ, &sfinfo);
 #else
@@ -385,14 +495,8 @@ __int64 FhGAACEncoder::beginEncode(_TCHAR *outFile, encodingParameters *params)
 	FILE * tmp;
 	unsigned int outt;
 	_tfopen_s(&tmp,tempFile,_T("wt"));
-	if(params->adtsMode) {
-		fprintf(tmp, "[audio_adtsaac]\nmode=%d\nprofile=%d\nbitrate=%d\npreset=%d\nsurround=0\n",params->mode,params->profile,params->modeQuality,params->modeQuality);
-		outt = mmioFOURCC('A','D','T','S');
-	}
-	else {
-		fprintf(tmp, "[audio_fhgaac]\nmode=%d\nprofile=%d\nbitrate=%d\npreset=%d\nsurround=0\n",params->mode,params->profile,params->modeQuality,params->modeQuality);
-		outt = mmioFOURCC('A','A','C','f');
-	}
+	fprintf(tmp, "[audio_fhgaac]\nmode=%d\nprofile=%d\nbitrate=%d\npreset=%d\nsurround=0\n",params->mode,params->profile,params->modeQuality,params->modeQuality);
+	outt = mmioFOURCC('A','A','C','f');
 	fclose(tmp);
 
 #ifdef UNICODE
@@ -400,19 +504,49 @@ __int64 FhGAACEncoder::beginEncode(_TCHAR *outFile, encodingParameters *params)
 #else
 	encoder=createAudio3(channels,samplerate,bitPerSample,mmioFOURCC('P','C','M',' '),&outt,tempFile);
 #endif
-	DeleteFile(tempFile);
 	if(!encoder) {
 		fprintf(stderr,"error: createAudio3 failure (input PCM format is unsupported or invalid encoding parameters)\n");
 		goto last;
 	}
 
 	FILE *fpw;
-	if(_tfopen_s(&fpw, outFile,_T("wb"))) {
+	if (params->adtsMode && !_tcscmp(outFile, _T("-"))) {
+		fpw = stdout;
+		_setmode(0, _O_BINARY);
+	}
+	else if(_tfopen_s(&fpw, outFile,_T("wb"))) {
 		if(fpw) fclose(fpw);
 		fprintf(stderr,"error: cannot create output file\n");
 		goto last;
 	}
 
+	unsigned char adts[8] = "\xff\xf1\x00\x00\x00\x1f\xfc";
+	unsigned srindex = getSamplingRateIndex(samplerate);
+	unsigned chconfig = getChannelConfig(channels);
+	adts[2] = 0x40 | (srindex << 2) | ((chconfig & 4) >> 2);
+	adts[3] = (chconfig & 3) << 6;
+
+	if (params->adtsMode) {
+		AudioCoder *tmpEncoder;
+		FILE *fpTemp = NULL;
+#ifdef UNICODE
+		tmpEncoder=createAudio3(channels,samplerate,bitPerSample,mmioFOURCC('P','C','M',' '),&outt,tempFileMB);
+#else
+		tmpEncoder=createAudio3(channels,samplerate,bitPerSample,mmioFOURCC('P','C','M',' '),&outt,tempFile);
+#endif
+		finishAudio3(tempFile,encoder);
+		if(!_tfopen_s(&fpTemp,tempFile,_T("r+b"))) {
+			unsigned int value = getFrequencyAndChannelFromM4a(fpTemp);
+			srindex = (value >> 4) & 0xf;
+			chconfig = value & 0xf;
+			adts[2] = 0x40 | (srindex << 2) | ((chconfig & 4) >> 2);
+			adts[3] = (chconfig & 3) << 6;
+		}
+		if(fpTemp) fclose(fpTemp);
+	}
+
+	DeleteFile(tempFile);
+	
 	if(fp && params->ignoreLength) totalFrames = 0;
 	int framepos = 0;
 	while(1) {
@@ -451,7 +585,16 @@ __int64 FhGAACEncoder::beginEncode(_TCHAR *outFile, encodingParameters *params)
 			used = 0;
 			int outsize = encoder->Encode(framepos++,ptr,insize,&used,outbuf,32768);
 			//fprintf(stderr,"get %d bytes from encoder (remaining %d bytes)\n",outsize,insize);
-			if(outsize>0) fwrite(outbuf,1,outsize,fpw);
+			if(outsize>0 && params->adtsMode) {
+				unsigned len = outsize + 7;
+				adts[3] &= 0xfc;
+				adts[3] |= len >> 11;
+				adts[4] = (len >> 3) & 0xff;
+				adts[5] &= 0x1f;
+				adts[5] |= (len & 7) << 5;
+				fwrite(adts,1,7,fpw);
+				fwrite(outbuf,1,outsize,fpw);
+			}
 			if(used>0) {
 				insize -= used;
 				ptr += used;
@@ -469,18 +612,28 @@ __int64 FhGAACEncoder::beginEncode(_TCHAR *outFile, encodingParameters *params)
 		}
 		if(ret < readSize || (totalFrames && total >= totalFrames)) break;
 	}
-	prepareToFinish(outFile,encoder);
+	putc('\n', stderr);
+	prepareToFinish(0,encoder);
 	while(1) {
 		used = 0;
 		int outsize = encoder->Encode(framepos++,inbuf,0,&used,outbuf,32768);
 		//fprintf(stderr,"get %d bytes from encoder, %d bytes used\n",outsize,used);
-		if(outsize>0) fwrite(outbuf,1,outsize,fpw);
-		else break;
+		if(outsize>0 && params->adtsMode) {
+			unsigned len = outsize + 7;
+			adts[3] &= 0xfc;
+			adts[3] |= len >> 11;
+			adts[4] = (len >> 3) & 0xff;
+			adts[5] &= 0x1f;
+			adts[5] |= (len & 7) << 5;
+			fwrite(adts,1,7,fpw);
+			fwrite(outbuf,1,outsize,fpw);
+		}
+		else if(outsize <= 0) break;
 	}
 	fclose(fpw);
-	finishAudio3(outFile,encoder);
 	
 	if(!params->adtsMode) {
+		finishAudio3(outFile,encoder);
 		struct __stat64 statbuf;
 		if(!_tstat64(outFile,&statbuf)) {
 			if(!_tfopen_s(&fpw,outFile,_T("r+b"))) {
