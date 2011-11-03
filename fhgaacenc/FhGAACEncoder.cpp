@@ -513,7 +513,7 @@ __int64 FhGAACEncoder::beginEncode(_TCHAR *outFile, encodingParameters *params)
 	FILE *fpw;
 	if (params->adtsMode && !_tcscmp(outFile, _T("-"))) {
 		fpw = stdout;
-		_setmode(0, _O_BINARY);
+		_setmode(_fileno(stdout), _O_BINARY);
 	}
 	else if(_tfopen_s(&fpw, outFile,_T("wb"))) {
 		if(fpw) fclose(fpw);
