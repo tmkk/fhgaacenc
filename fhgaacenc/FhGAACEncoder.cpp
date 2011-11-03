@@ -205,7 +205,7 @@ static unsigned int getFrequencyAndChannelFromM4a(FILE *fp)
 	char atom[4];
 	int tmp,i;
 	__int64 initPos = ftello(fp);
-	int freq = 0;
+	unsigned int value = 0xffffffff;
 	
 	if(fseeko(fp,0,SEEK_SET) != 0) goto end;
 	
@@ -281,14 +281,14 @@ static unsigned int getFrequencyAndChannelFromM4a(FILE *fp)
 	}
 	if(fseeko(fp,1,SEEK_CUR) != 0) goto end;
 	if(fread(atom,1,2,fp) < 2) goto end;
-	tmp = (atom[0]<<1)&0xe;
-	tmp |= (atom[1]>>7)&0x1;
-	tmp <<= 4;
-	tmp |= (atom[1]>>3)&0xf;
+	value = (atom[0]<<1)&0xe;
+	value |= (atom[1]>>7)&0x1;
+	value <<= 4;
+	value |= (atom[1]>>3)&0xf;
 	
 end:
-		fseeko(fp,initPos,SEEK_SET);
-	return tmp;
+	fseeko(fp,initPos,SEEK_SET);
+	return value;
 }
 
 static
@@ -504,9 +504,9 @@ __int64 FhGAACEncoder::beginEncode(_TCHAR *outFile, encodingParameters *params)
 #else
 	encoder=createAudio3(channels,samplerate,bitPerSample,mmioFOURCC('P','C','M',' '),&outt,tempFile);
 #endif
+	DeleteFile(tempFile);
 	if(!encoder) {
 		fprintf(stderr,"error: createAudio3 failure (input PCM format is unsupported or invalid encoding parameters)\n");
-		DeleteFile(tempFile);
 		goto last;
 	}
 
@@ -517,7 +517,6 @@ __int64 FhGAACEncoder::beginEncode(_TCHAR *outFile, encodingParameters *params)
 	}
 	else if(_tfopen_s(&fpw, outFile,_T("wb"))) {
 		if(fpw) fclose(fpw);
-		DeleteFile(tempFile);
 		fprintf(stderr,"error: cannot create output file\n");
 		goto last;
 	}
@@ -529,25 +528,20 @@ __int64 FhGAACEncoder::beginEncode(_TCHAR *outFile, encodingParameters *params)
 	adts[3] = (chconfig & 3) << 6;
 
 	if (params->adtsMode) {
-		AudioCoder *tmpEncoder;
 		FILE *fpTemp = NULL;
-#ifdef UNICODE
-		tmpEncoder=createAudio3(channels,samplerate,bitPerSample,mmioFOURCC('P','C','M',' '),&outt,tempFileMB);
-#else
-		tmpEncoder=createAudio3(channels,samplerate,bitPerSample,mmioFOURCC('P','C','M',' '),&outt,tempFile);
-#endif
 		finishAudio3(tempFile,encoder);
-		if(!_tfopen_s(&fpTemp,tempFile,_T("r+b"))) {
+		if(!_tfopen_s(&fpTemp,tempFile,_T("rb"))) {
 			unsigned int value = getFrequencyAndChannelFromM4a(fpTemp);
-			srindex = (value >> 4) & 0xf;
-			chconfig = value & 0xf;
-			adts[2] = 0x40 | (srindex << 2) | ((chconfig & 4) >> 2);
-			adts[3] = (chconfig & 3) << 6;
+				if(value != 0xffffffff) {
+				srindex = (value >> 4) & 0xf;
+				chconfig = value & 0xf;
+				adts[2] = 0x40 | (srindex << 2) | ((chconfig & 4) >> 2);
+				adts[3] = (chconfig & 3) << 6;
+			}
 		}
 		if(fpTemp) fclose(fpTemp);
+		DeleteFile(tempFile);
 	}
-
-	DeleteFile(tempFile);
 	
 	if(fp && params->ignoreLength) totalFrames = 0;
 	int framepos = 0;
