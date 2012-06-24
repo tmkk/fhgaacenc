@@ -6,7 +6,7 @@
 
 #pragma once
 
-#define VERSION 20111104
+#define VERSION 20120624
 
 #ifdef _MSC_VER
 #define fseeko _fseeki64

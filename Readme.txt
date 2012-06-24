@@ -21,7 +21,7 @@ Command Line Options
 fhgaacenc.exe [options] infile [outfile]
 
   --cbr <bitrate> : encode in CBR mode, bitrate=8..576
-  --vbr <preset>  : encode in VBR mode, preset=1..5 [default]
+  --vbr <preset>  : encode in VBR mode, preset=1..6 [default]
   --profile <auto|lc|he|hev2> : choose AAC profile (only for CBR mode)
     auto : automatically choose the optimum profile according to the bitrate [default]
     lc   : force use LC-AAC profile

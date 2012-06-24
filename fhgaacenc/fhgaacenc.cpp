@@ -34,7 +34,7 @@ static void printUsage(void)
 	fprintf(stderr,"        pass - as outfile to encode to stdout (ADTS only).\n\n");
 	fprintf(stderr,"  General encoding options\n");
 	fprintf(stderr,"\t--cbr <bitrate> : encode in CBR mode, bitrate=8..576\n");
-	fprintf(stderr,"\t--vbr <preset>  : encode in VBR mode, preset=1..5 [default]\n");
+	fprintf(stderr,"\t--vbr <preset>  : encode in VBR mode, preset=1..6 [default]\n");
 	fprintf(stderr,"\t--profile <auto|lc|he|hev2> : choose AAC profile (only for CBR mode)\n");
 	fprintf(stderr,"\t    auto : automatically choose the optimum profile\n");
 	fprintf(stderr,"\t           according to the bitrate [default]\n");
@@ -73,7 +73,7 @@ static int parseArguments(int argc, _TCHAR* argv[], encodingParameters *params)
 			if(++i<argc) {
 				params->modeQuality = _tstoi(argv[i]);
 				if(params->modeQuality < 1) params->modeQuality = 1;
-				else if(params->modeQuality > 5) params->modeQuality = 5;
+				else if(params->modeQuality > 6) params->modeQuality = 6;
 			}
 		}
 		else if(!_tcscmp(argv[i],_T("--profile"))) {
